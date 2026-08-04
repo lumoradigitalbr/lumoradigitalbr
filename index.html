@@ -21,7 +21,7 @@
     }(window, document, 'ttq');
     </script>
     <!-- TikTok Pixel Code End -->
-    
+
     <style>
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #ffffff; }
         iframe { width: 100%; height: 100vh; border: none; display: block; }
@@ -30,7 +30,7 @@
 <body>
 
     <iframe id="tally-iframe" src="about:blank"></iframe>
-
+    
     <script>
         function getCookie(name) {
             const value = "; " + document.cookie;
@@ -39,59 +39,69 @@
             return "";
         }
 
+        // Retry generico: espera cookie aparecer (Pixel demora ~100-500ms pra setar).
+        async function waitCookie(name, maxTries, intervalMs) {
+            for (let i = 0; i < maxTries; i++) {
+                const v = getCookie(name);
+                if (v) return v;
+                await new Promise(r => setTimeout(r, intervalMs));
+            }
+            return "";
+        }
+
         async function carregarTally() {
             const urlParams = new URLSearchParams(window.location.search);
             const valor = urlParams.get('valor') || '';
             // --- TIKTOK: evento de COMPRA (esta landing e pos-pagamento) ---
             try { if (window.ttq) { ttq.track('CompletePayment', { value: parseFloat(String(valor).replace(',', '.')) || 0, currency: 'BRL', content_type: 'product' }); } } catch (e) {}
+
             const fbclidUrl = urlParams.get('fbclid') || '';
-            // --- TIKTOK: ttclid (URL/cookie) e _ttp (cookie) ---
             const ttclidUrl = urlParams.get('ttclid') || '';
-            let ttclid = getCookie('_ttclid') || ttclidUrl;
-            let ttp = "";
-            for (let i = 0; i < 6; i++) { ttp = getCookie('_ttp'); if (ttp) break; await new Promise(r => setTimeout(r, 500)); }
-            
-            // --- LÓGICA DE RECUPERAÇÃO DO FBC ---
-            // 1. Tenta buscar o rastro real pelo cookie salvo pelo Pixel
-            let fbc = getCookie('_fbc');
 
-            // 2. Se o cookie não existir, mas houver fbclid na URL, reconstrói o parâmetro
+            // --- FBP: cookie setado pelo Pixel Meta pra QUALQUER visitante.
+            // Retry ate 6s pra cobrir navegador lento / Pixel carregando async.
+            let fbp = await waitCookie('_fbp', 12, 500);
+
+            // --- FBC: so existe se veio de anuncio Meta (fbclid) ou navegou no Facebook.
+            // 1) Cookie _fbc setado pelo proprio Pixel (prioridade maxima).
+            let fbc = await waitCookie('_fbc', 4, 250);
+            // 2) Sem cookie, mas com fbclid na URL -> reconstroi formato oficial fb.1.timestamp.fbclid
             if (!fbc && fbclidUrl) {
-                fbc = `fb.1.${Date.now()}.${fbclidUrl}`;
+                fbc = fb.1.${Date.now()}.${fbclidUrl};
             }
+            // 3) Sem cookie e sem fbclid -> NAO inventar. Enviar fbc invalido degrada o EMQ.
 
-            // 3. Caso não haja rastro (acesso direto), marca como direct_access
-            if (!fbc) {
-                fbc = `fb.1.${Date.now()}.direct_access`;
-            }
-
-            // BUSCA PELO FBP COM RETRY (Essencial para cruzamento de dados na Meta)
-            let fbp = "";
-            for (let i = 0; i < 6; i++) {
-                fbp = getCookie('_fbp');
-                if (fbp) break; 
-                await new Promise(r => setTimeout(r, 500));
-            }
+            // --- TIKTOK: ttclid + _ttp cookie ---
+            let ttclid = getCookie('_ttclid') || ttclidUrl;
+            let ttp = await waitCookie('_ttp', 12, 500);
 
             const ua = navigator.userAgent.substring(0, 150);
             let ip = '';
             try {
-                // Adicionado AbortController para não travar o carregamento (importante para o hardware atual)
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 2000);
                 const res = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
                 const data = await res.json();
                 ip = data.ip;
                 clearTimeout(timeoutId);
-            } catch (e) { 
-                ip = "1.1.1.1"; 
+            } catch (e) {
+                ip = "";
             }
 
             const tallyID = "9q6jMK"; // TALLY ID MANTIDO
-            
-            // Montagem da URL com encodeURIComponent para evitar perda de dados
-            const finalURL = `https://tally.so/r/${tallyID}?valor=${valor}&fbc=${encodeURIComponent(fbc)}&fbp=${fbp}&ttclid=${encodeURIComponent(ttclid)}&ttp=${ttp}&ip=${ip}&ua=${encodeURIComponent(ua)}`;
-            
+
+            // Monta URL do Tally so com params que tem valor real (evita mandar '' pro webhook).
+            const params = new URLSearchParams();
+            if (valor)  params.set('valor', valor);
+            if (fbc)    params.set('fbc', fbc);
+            if (fbp)    params.set('fbp', fbp);
+            if (ttclid) params.set('ttclid', ttclid);
+            if (ttp)    params.set('ttp', ttp);
+            if (ip)     params.set('ip', ip);
+            if (ua)     params.set('ua', ua);
+
+            const finalURL = https://tally.so/r/${tallyID}?${params.toString()};
+
             const iframe = document.getElementById('tally-iframe');
             if (iframe) {
                 iframe.src = finalURL;
