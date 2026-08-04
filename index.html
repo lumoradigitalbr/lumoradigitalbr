@@ -30,7 +30,7 @@
 <body>
 
     <iframe id="tally-iframe" src="about:blank"></iframe>
-    
+
     <script>
         function getCookie(name) {
             const value = "; " + document.cookie;
@@ -67,7 +67,7 @@
             let fbc = await waitCookie('_fbc', 4, 250);
             // 2) Sem cookie, mas com fbclid na URL -> reconstroi formato oficial fb.1.timestamp.fbclid
             if (!fbc && fbclidUrl) {
-                fbc = fb.1.${Date.now()}.${fbclidUrl};
+                fbc = `fb.1.${Date.now()}.${fbclidUrl}`;
             }
             // 3) Sem cookie e sem fbclid -> NAO inventar. Enviar fbc invalido degrada o EMQ.
 
@@ -100,7 +100,7 @@
             if (ip)     params.set('ip', ip);
             if (ua)     params.set('ua', ua);
 
-            const finalURL = https://tally.so/r/${tallyID}?${params.toString()};
+            const finalURL = `https://tally.so/r/${tallyID}?${params.toString()}`;
 
             const iframe = document.getElementById('tally-iframe');
             if (iframe) {
